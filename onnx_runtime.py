@@ -175,7 +175,6 @@ class YOLOv8:
         """
         # Transpose and squeeze the output to match the expected shape
         outputs = np.transpose(np.squeeze(output[0]))
-
         # Get the number of rows in the outputs array
         rows = outputs.shape[0]
 
@@ -252,10 +251,14 @@ class YOLOv8:
 
         # Preprocess the image data
         img_data, pad = self.preprocess()
-
+        # img_data (1, 3, 640, 640)
+        # print(img_data.shape)
+        # print(img_data)
         # Run inference using the preprocessed image data
         outputs = session.run(None, {model_inputs[0].name: img_data})
-
+        # outputs[0] has shape (1, 84, 8400)
+        # print(outputs[0].shape)
+        # print(outputs[0])
         # Perform post-processing on the outputs to obtain output image
         return self.postprocess(self.img, outputs, pad)
 
