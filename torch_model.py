@@ -3,18 +3,26 @@ import numpy as np
 import torch
 from ultralytics.nn.tasks import DetectionModel
 from typing import Tuple, List
+import random
 
 class YOLOv8Detector:
     def __init__(self, model_path: str = 'yolov8s.yaml', weights_path: str = './runs/detect/train2/weights/best.pt'):
         """Initialize YOLOv8 detection model with configuration and weights"""
-        self.model = DetectionModel(model_path)
-        self.ckpt = torch.load(weights_path)
-        self.model.load_state_dict(self.ckpt['model'].state_dict())
+
+        self.ckpt = torch.load(weights_path, map_location='cpu')
+        self.model = self.ckpt['model'] if isinstance(self.ckpt, dict) and 'model' in self.ckpt else self.ckpt
+        assert isinstance(self.model, DetectionModel), 'checkpoint does not contain DetectionModel'
+        self.model.float()
         self.confidence_thres = 0.2
         self.iou_thres = 0.5
         self.input_width = 640
         self.input_height = 640
 
+        # 类别与调色板
+        self.classes = self.model.names  # 类别名
+        random.seed(42)
+        self.color_palette = [tuple(random.randint(0,255) for _ in range(3)) 
+                              for _ in range(len(self.classes))]
 
     def letterbox(self, img: np.ndarray, new_shape: Tuple[int, int] = (640, 640)) -> Tuple[np.ndarray, Tuple[int, int]]:
         """
@@ -184,39 +192,21 @@ class YOLOv8Detector:
     def predict(self, image_path: str):
         self.input_image = image_path
         img_data, pad = self.preprocess()
-        print(img_data.shape)
-        print(img_data)
-        # """Run inference on a single image"""
-        # # Load image
-        # img = cv2.imread(image_path)
-        # img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
-        # # Letterbox and get padding
-        # input_image, pad = self.letterbox(img_rgb)
-        
+
         # # Convert to tensor
         input_tensor = torch.from_numpy(img_data).to(torch.float32)
-        # input_tensor = input_tensor.permute(2, 0, 1).unsqueeze(0)
         
         # # Run inference
         with torch.no_grad():
-            print(input_tensor.shape)
-            print(input_tensor)
-            outputs = self.model(input_tensor)
-            # outputs[0] has shape [1, 144, 80, 80])
+            outputs = self.model(input_tensor)[0]
+            outputs = outputs.numpy()
 
-            print(outputs[0].shape)
-            print(outputs[0])
         # # Process predictions
-        result = self.postprocess(self.img, outputs, pad)
+        result_img = self.postprocess(self.img, [outputs], pad)
         
         # # Save and show result
-        # cv2.imwrite('detection_result.jpg', result)
-        # cv2.imshow('YOLOv8 Detection', result)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-        # return result
-        pass
+        cv2.imwrite('result.jpg', result_img)
+        return result_img
 
 # Run detection
 if __name__ == '__main__':
