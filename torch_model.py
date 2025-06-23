@@ -3,18 +3,31 @@ import numpy as np
 import torch
 from ultralytics.nn.tasks import DetectionModel
 from typing import Tuple, List
+import random
 
 class YOLOv8Detector:
-    def __init__(self, model_path: str = 'yolov8s.yaml', weights_path: str = './runs/detect/train2/weights/best.pt'):
+    def __init__(self, model_path: str = 'yolo11.yaml', weights_path: str = '/root/work/runs/yolo11s.pt'):
         """Initialize YOLOv8 detection model with configuration and weights"""
-        self.model = DetectionModel(model_path)
-        self.ckpt = torch.load(weights_path)
-        self.model.load_state_dict(self.ckpt['model'].state_dict())
-        self.confidence_thres = 0.2
+        # 直接从 .pt 权重文件加载完整 DetectionModel，避免维度不匹配
+        self.ckpt = torch.load(weights_path, map_location='cpu')
+        self.model = self.ckpt['model'] if isinstance(self.ckpt, dict) and 'model' in self.ckpt else self.ckpt
+        assert isinstance(self.model, DetectionModel), 'checkpoint does not contain DetectionModel'
+        # self.model.fuse() # 提升推理速度，可选但推荐。
+        self.model.float() # 保证 dtype 统一与算子支持度，通常必要；除非你已经确定要全链路 FP16。
+        self.model.eval()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model.to(self.device)
+
+        self.confidence_thres = 0.25
         self.iou_thres = 0.5
         self.input_width = 640
         self.input_height = 640
 
+        # 类别与调色板
+        self.classes = self.model.names  # 类别名
+        random.seed(42)
+        self.color_palette = [tuple(random.randint(0,255) for _ in range(3)) 
+                              for _ in range(len(self.classes))]
 
     def letterbox(self, img: np.ndarray, new_shape: Tuple[int, int] = (640, 640)) -> Tuple[np.ndarray, Tuple[int, int]]:
         """
@@ -46,32 +59,27 @@ class YOLOv8Detector:
         return img, (top, left)
 
     def draw_detections(self, img: np.ndarray, box: List[float], score: float, class_id: int) -> None:
-        """Draw bounding boxes and labels on the input image based on the detected objects."""
-        # Extract the coordinates of the bounding box
-        x1, y1, w, h = box
+        """Draw bounding boxes (left, top, width, height) and labels on the image."""
+        x1, y1, w, h = box  # postprocess 给出的格式
+        x2, y2 = x1 + w, y1 + h
 
-        # Retrieve the color for the class ID
         color = self.color_palette[class_id]
 
-        # Draw the bounding box on the image
-        cv2.rectangle(img, (int(x1), int(y1)), (int(x1 + w), int(y1 + h)), color, 2)
+        cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
 
-        # Create the label text with class name and score
         label = f"{self.classes[class_id]}: {score:.2f}"
 
-        # Calculate the dimensions of the label text
         (label_width, label_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        label_x = int(x1)
+        label_y = int(y1) - 10 if y1 - 10 > label_height else int(y1) + 10
 
-        # Calculate the position of the label text
-        label_x = x1
-        label_y = y1 - 10 if y1 - 10 > label_height else y1 + 10
-
-        # Draw a filled rectangle as the background for the label text
         cv2.rectangle(
-            img, (label_x, label_y - label_height), (label_x + label_width, label_y + label_height), color, cv2.FILLED
+            img,
+            (label_x, label_y - label_height),
+            (label_x + label_width, label_y + label_height),
+            color,
+            cv2.FILLED,
         )
-
-        # Draw the label text on the image
         cv2.putText(img, label, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
     def preprocess(self) -> Tuple[np.ndarray, Tuple[int, int]]:
@@ -195,30 +203,22 @@ class YOLOv8Detector:
         # input_image, pad = self.letterbox(img_rgb)
         
         # # Convert to tensor
-        input_tensor = torch.from_numpy(img_data).to(torch.float32)
+        input_tensor = torch.from_numpy(img_data).to(torch.float32).to(self.device)
         # input_tensor = input_tensor.permute(2, 0, 1).unsqueeze(0)
         
         # # Run inference
         with torch.no_grad():
-            print(input_tensor.shape)
-            print(input_tensor)
-            outputs = self.model(input_tensor)
-            # outputs[0] has shape [1, 144, 80, 80])
+            preds = self.model(input_tensor)[0]  # shape: (1, 84, 8400)
 
-            print(outputs[0].shape)
-            print(outputs[0])
-        # # Process predictions
-        result = self.postprocess(self.img, outputs, pad)
+        # 将 tensor 转成 numpy 并包装成 list，符合 postprocess 需求
+        preds_np = preds.detach().cpu().numpy()
+        result_img = self.postprocess(self.img, [preds_np], pad)
         
         # # Save and show result
-        # cv2.imwrite('detection_result.jpg', result)
-        # cv2.imshow('YOLOv8 Detection', result)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-        # return result
-        pass
+        cv2.imwrite('result.jpg', result_img)
+        return result_img
 
 # Run detection
 if __name__ == '__main__':
     detector = YOLOv8Detector()
-    detector.predict("./datasets/coco128/images/train2017/000000000308.jpg")
+    detector.predict("/root/work/datasets/coco128/images/train2017/000000000308.jpg")
