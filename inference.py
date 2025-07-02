@@ -11,21 +11,29 @@ model = YOLO("./runs/detect/train2/weights/best.pt")
 # Run inference on the source
 results1 = model(source)  # list of Results objects
 
-# # Load the exported ONNX model
+# Load the exported ONNX model
 onnx_model = YOLO("./runs/detect/train2/weights/best.onnx")
 
-# # Run inference
+# Run inference
 results2 = onnx_model(source)
 
-print(results1)
-print(results2)
+# Load the exported TensorRT model
+tensorrt_model = YOLO("./runs/detect/train2/weights/best.engine")
+
+# # Run inference
+results3 = tensorrt_model(source)
+
+
+# print(results1)
+# print(results2)
+print(results3)
 
 # # Or equivalent to the following line
 # # Run inference
 # # model.predict(source, save=True, imgsz=320, conf=0.5)
 
 # Visualize the results
-for i, r in enumerate(results1):
+for i, r in enumerate(results3):
     # Plot results image
     im_bgr = r.plot()  # BGR-order numpy array
     im_rgb = Image.fromarray(im_bgr[..., ::-1])  # RGB-order PIL image
