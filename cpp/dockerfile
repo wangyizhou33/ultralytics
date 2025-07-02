@@ -10,7 +10,7 @@ RUN apt-get update && \
     build-essential \
     python3-pip \
     cmake \
-    xorg \
+    pkg-config 
     # Optional: Add other common development tools if needed
     # git \
     # vim \
