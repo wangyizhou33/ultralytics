@@ -12,8 +12,8 @@ class YOLOv8Detector:
         self.ckpt = torch.load(weights_path, map_location='cpu')
         self.model = self.ckpt['model'] if isinstance(self.ckpt, dict) and 'model' in self.ckpt else self.ckpt
         assert isinstance(self.model, DetectionModel), 'checkpoint does not contain DetectionModel'
-        # self.model.fuse() # 提升推理速度，可选但推荐。
-        self.model.float() # 保证 dtype 统一与算子支持度，通常必要；除非你已经确定要全链路 FP16。
+        self.model.fuse()
+        self.model.float()
         self.model.eval()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
@@ -207,8 +207,9 @@ class YOLOv8Detector:
         # input_tensor = input_tensor.permute(2, 0, 1).unsqueeze(0)
         
         # # Run inference
-        with torch.no_grad():
-            preds = self.model(input_tensor)[0]  # shape: (1, 84, 8400)
+        preds = self.forward(input_tensor)
+        # with torch.no_grad():
+        #     preds = self.model(input_tensor)[0]  # shape: (1, 84, 8400)
 
         # 将 tensor 转成 numpy 并包装成 list，符合 postprocess 需求
         preds_np = preds.detach().cpu().numpy()
@@ -217,6 +218,24 @@ class YOLOv8Detector:
         # # Save and show result
         cv2.imwrite('result.jpg', result_img)
         return result_img
+
+    def forward(self, imgs: torch.Tensor):
+        """批量推理接口，供 Ultralytics DetectionValidator 调用。
+
+        Args:
+            imgs (torch.Tensor): shape = (B, 3, H, W)，已归一化到 0~1，且位于 self.device。
+
+        Returns:
+            torch.Tensor: 原始 head 输出张量，形状约为 (B, N, 85) 或 (B, 84, 8400)，具体取决于底层模型。
+        """
+        # 保证输入在正确设备与浮点精度
+        imgs = imgs.to(self.device, dtype=torch.float32)
+        # forward 输出是一个 list(tuple)；取第一项即可得到预测张量
+        with torch.no_grad():
+            preds = self.model(imgs)[0]
+
+        print(f'Hahahahahahahahahahahahahahahahaha ===============================456')
+        return preds
 
 # Run detection
 if __name__ == '__main__':
