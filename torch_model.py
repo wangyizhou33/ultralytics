@@ -24,6 +24,8 @@ class YOLOv8Detector:
         self.color_palette = [tuple(random.randint(0,255) for _ in range(3)) 
                               for _ in range(len(self.classes))]
 
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     def letterbox(self, img: np.ndarray, new_shape: Tuple[int, int] = (640, 640)) -> Tuple[np.ndarray, Tuple[int, int]]:
         """
         Resize and reshape images while maintaining aspect ratio by adding padding.
@@ -207,6 +209,23 @@ class YOLOv8Detector:
         # # Save and show result
         cv2.imwrite('result.jpg', result_img)
         return result_img
+
+    def forward(self, imgs: torch.Tensor):
+        """批量推理接口，供 Ultralytics DetectionValidator 调用。
+
+        Args:
+            imgs (torch.Tensor): shape = (B, 3, H, W)，已归一化到 0~1，且位于 self.device。
+
+        Returns:
+            torch.Tensor: 原始 head 输出张量，形状约为 (B, N, 85) 或 (B, 84, 8400)，具体取决于底层模型。
+        """
+        # 保证输入在正确设备与浮点精度
+        imgs = imgs.to(self.device, dtype=torch.float32)
+        # forward 输出是一个 list(tuple)；取第一项即可得到预测张量
+        with torch.no_grad():
+            preds = self.model(imgs)[0]
+
+        return preds
 
 # Run detection
 if __name__ == '__main__':
