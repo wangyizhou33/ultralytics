@@ -7,18 +7,18 @@
 #include <opencv2/opencv.hpp>
 
 #include "inference.h"
+#include <filesystem>
+
+
 
 using namespace std;
 using namespace cv;
 
 void postProcess(Inference &inf, const std::string &image_path, bool onnxRuntime, const std::string &trtModelPath) {
     cv::Mat frame = cv::imread(image_path, cv::IMREAD_COLOR);
-
     // Inference starts here...
     std::vector<Detection> output = inf.runInference(frame, onnxRuntime, trtModelPath);
-
     int detections = output.size();
-    std::cout << "Number of detections:" << detections << std::endl;
 
     for (int i = 0; i < detections; ++i)
     {
@@ -47,6 +47,7 @@ void postProcess(Inference &inf, const std::string &image_path, bool onnxRuntime
 
     // cv::waitKey(-1);
     if (!trtModelPath.empty()) {
+        std::cout << "Writing result to output_trt_cpp.jpg" << std::endl;
         cv::imwrite("output_trt_cpp.jpg", frame);
     } else {
         if (onnxRuntime) {
@@ -60,7 +61,7 @@ void postProcess(Inference &inf, const std::string &image_path, bool onnxRuntime
 int main(int argc, char **argv)
 {
     // std::string projectBasePath = "/home/user/ultralytics"; // Set your ultralytics base path
-    std::string projectBasePath = "/nas_adas_data_platform/mnt/ofs-meta-data2/test/liwanjun/ultralytics/ultralytics-master";
+    std::string projectBasePath = "/home/yizhouw/Repositories/ultralytics/cpp-tensorrt";
 
     bool runOnGPU = true;
 
@@ -74,19 +75,32 @@ int main(int argc, char **argv)
 
     // Note that in this example the classes are hard-coded and 'classes.txt' is a place holder.
     // Inference inf(projectBasePath + "/yolov8s.onnx", cv::Size(640, 640), "classes.txt", runOnGPU);
-    Inference inf(projectBasePath + "/runs/detect/train2/weights/best.onnx", cv::Size(640, 640), "classes.txt", runOnGPU);
+    Inference inf(projectBasePath + "/best.engine", cv::Size(640, 640), "classes.txt", runOnGPU);
+ 
+
+    std::filesystem::path current_path = std::filesystem::current_path();
+    std::filesystem::path imgs_path = current_path / "images";
 
     std::vector<std::string> imageNames;
     // imageNames.push_back(projectBasePath + "/ultralytics/assets/bus.jpg");
     // imageNames.push_back(projectBasePath + "/ultralytics/assets/zidane.jpg");
-    imageNames.push_back(projectBasePath + "/datasets/coco128/images/train2017/000000000308.jpg");
+    
 
-    std::string trtModelPath = projectBasePath + "/runs/detect/train2/weights/best.engine";
+    for (auto& i : std::filesystem::directory_iterator(imgs_path))
+    {
+        if (i.path().extension() == ".jpg" || i.path().extension() == ".png" || i.path().extension() == ".jpeg")
+        {
+            std::string img_path = i.path().string();
+            imageNames.push_back(img_path);
+        }
+    }
+
+    std::string trtModelPath = "/home/yizhouw/Repositories/ultralytics/cpp-tensorrt/best.engine";
 
     for (int i = 0; i < imageNames.size(); ++i)
     {
-        postProcess(inf, imageNames[i], true, "");
-        postProcess(inf, imageNames[i], false, "");
+        // postProcess(inf, imageNames[i], true, "");
+        // postProcess(inf, imageNames[i], false, "");
         postProcess(inf, imageNames[i], false, trtModelPath);
     }
 }

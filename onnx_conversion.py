@@ -9,4 +9,5 @@ model = YOLO("./runs/detect/train2/weights/best.pt")
 model.export(format="onnx")  # model will be saved in the same directory as "best.onnx"
 
 # Export the model to TensorRT format
-model.export(format="engine", device=0)  # creates 'yolo11n.engine'
+from ultralytics.utils.export import export_engine
+export_engine("runs/detect/train2/weights/best.onnx", half=True)

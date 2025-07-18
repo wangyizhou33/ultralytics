@@ -12,8 +12,8 @@ class Logger : public ILogger {
 
 void Inference::doInference(IExecutionContext& context, float* inputHost, float* outputHost, int inputH, int inputW, int batchSize, int rows, int dimensions) {
     const ICudaEngine& engine = context.getEngine();
-    int inputIndex = engine.getBindingIndex("images");
-    int outputIndex = engine.getBindingIndex("output0");
+    // int inputIndex = engine.getBindingIndex("images");
+    // int outputIndex = engine.getBindingIndex("output0");
 
     // 分配设备内存
     void* buffers[2];
@@ -61,13 +61,26 @@ float* Inference::runTrt(cv::Mat &modelInput, const std::string &trtModelPath, i
     // 加载引擎
     IRuntime* runtime = createInferRuntime(gLogger);
     std::ifstream file(trtModelPath, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open TensorRT model file: " << trtModelPath << std::endl;
+        return nullptr; // Or throw an exception
+    }
 
     file.seekg(0, file.end);
     size_t size = file.tellg();
+    if (size == static_cast<size_t>(-1)) { // Check if tellg() returned an error
+        std::cerr << "Error: Could not determine size of TensorRT model file: " << trtModelPath << std::endl;
+        file.close();
+        return nullptr;
+    }
     file.seekg(0, file.beg);
 
     std::vector<char> engine_data(size);
-    file.read(engine_data.data(), size);
+    if (!file.read(engine_data.data(), size)) {
+        std::cerr << "Error: Could not read TensorRT model file: " << trtModelPath << std::endl;
+        file.close();
+        return nullptr;
+    }
 
     ICudaEngine* engine = runtime->deserializeCudaEngine(engine_data.data(), size);
     IExecutionContext* context = engine->createExecutionContext();
@@ -82,9 +95,9 @@ float* Inference::runTrt(cv::Mat &modelInput, const std::string &trtModelPath, i
     // 推理
     doInference(*context, inputHost, outputHost, inputH, inputW, 1, rows, dimensions);
 
-    context->destroy();
-    engine->destroy();
-    runtime->destroy();
+    // context->destroy();
+    // engine->destroy();
+    // runtime->destroy();
     return outputHost;
 }
 
@@ -95,8 +108,8 @@ Inference::Inference(const std::string &onnxModelPath, const cv::Size &modelInpu
     classesPath = classesTxtFile;
     cudaEnabled = runWithCuda;
 
-    loadOnnxNetwork();
-    loadOnnxNetworkOnnxRuntime();
+    // loadOnnxNetwork();
+    // loadOnnxNetworkOnnxRuntime();
     // loadClassesFromFile(); The classes are hard-coded for this example
 }
 
@@ -116,60 +129,62 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input, const bool 
         rows = 8400;
         dimensions = 84;
         yolov8 = true;
+
         data = runTrt(modelInput, trtModelPath, rows, dimensions);
-    } else {
-        if (onnxRuntime) {
-            // onnx inference with onnx runtime
-            float* blob_new = new float[modelInput.total() * 3];
-            BlobFromImage(modelInput, blob_new);
-            std::vector<int64_t> YOLO_input_node_dims = { 1, 3, modelShape.width, modelShape.height };
-            Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
-                Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU), blob_new, 3 * modelShape.width * modelShape.height,
-                YOLO_input_node_dims.data(), YOLO_input_node_dims.size());
-            auto outputTensor = session->Run(options, inputNodeNames.data(), &input_tensor, 1, outputNodeNames.data(),
-                outputNodeNames.size());
-            Ort::TypeInfo typeInfo = outputTensor.front().GetTypeInfo();
-            auto tensor_info = typeInfo.GetTensorTypeAndShapeInfo();
-            std::vector<int64_t> outputNodeDims = tensor_info.GetShape();
-            auto output = outputTensor.front().GetTensorMutableData<typename std::remove_pointer<float>::type>();
-            rows = outputNodeDims[1];//84
-            dimensions = outputNodeDims[2];//8400
-            cv::Mat rawData = cv::Mat(rows, dimensions, CV_32F, output);
-            rawData = rawData.t();
-            data = (float*)rawData.data;
-            if (dimensions > rows) 
-            {
-                yolov8 = true;
-                int t = rows;
-                rows = dimensions;
-                dimensions = t;
-            }
-        } else {
-            // onnx inference with opencv
-            cv::Mat blob;
-            cv::dnn::blobFromImage(modelInput, blob, 1.0/255.0, modelShape, cv::Scalar(), true, false);
-            net.setInput(blob);
-
-            std::vector<cv::Mat> outputs;
-            net.forward(outputs, net.getUnconnectedOutLayersNames());
-
-            rows = outputs[0].size[1];
-            dimensions = outputs[0].size[2];
-
-            // yolov5 has an output of shape (batchSize, 25200, 85) (Num classes + box[x,y,w,h] + confidence[c])
-            // yolov8 has an output of shape (batchSize, 84,  8400) (Num classes + box[x,y,w,h])
-            if (dimensions > rows) // Check if the shape[2] is more than shape[1] (yolov8)
-            {
-                yolov8 = true;
-                rows = outputs[0].size[2];
-                dimensions = outputs[0].size[1];
-
-                outputs[0] = outputs[0].reshape(1, dimensions);
-                cv::transpose(outputs[0], outputs[0]);
-            }
-            data = (float *)outputs[0].data;
-        }
     }
+    // } else {
+    //     if (onnxRuntime) {
+    //         // onnx inference with onnx runtime
+    //         float* blob_new = new float[modelInput.total() * 3];
+    //         BlobFromImage(modelInput, blob_new);
+    //         std::vector<int64_t> YOLO_input_node_dims = { 1, 3, modelShape.width, modelShape.height };
+    //         Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+    //             Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU), blob_new, 3 * modelShape.width * modelShape.height,
+    //             YOLO_input_node_dims.data(), YOLO_input_node_dims.size());
+    //         auto outputTensor = session->Run(options, inputNodeNames.data(), &input_tensor, 1, outputNodeNames.data(),
+    //             outputNodeNames.size());
+    //         Ort::TypeInfo typeInfo = outputTensor.front().GetTypeInfo();
+    //         auto tensor_info = typeInfo.GetTensorTypeAndShapeInfo();
+    //         std::vector<int64_t> outputNodeDims = tensor_info.GetShape();
+    //         auto output = outputTensor.front().GetTensorMutableData<typename std::remove_pointer<float>::type>();
+    //         rows = outputNodeDims[1];//84
+    //         dimensions = outputNodeDims[2];//8400
+    //         cv::Mat rawData = cv::Mat(rows, dimensions, CV_32F, output);
+    //         rawData = rawData.t();
+    //         data = (float*)rawData.data;
+    //         if (dimensions > rows) 
+    //         {
+    //             yolov8 = true;
+    //             int t = rows;
+    //             rows = dimensions;
+    //             dimensions = t;
+    //         }
+    //     } else {
+    //         // onnx inference with opencv
+    //         cv::Mat blob;
+    //         cv::dnn::blobFromImage(modelInput, blob, 1.0/255.0, modelShape, cv::Scalar(), true, false);
+    //         net.setInput(blob);
+
+    //         std::vector<cv::Mat> outputs;
+    //         net.forward(outputs, net.getUnconnectedOutLayersNames());
+
+    //         rows = outputs[0].size[1];
+    //         dimensions = outputs[0].size[2];
+
+    //         // yolov5 has an output of shape (batchSize, 25200, 85) (Num classes + box[x,y,w,h] + confidence[c])
+    //         // yolov8 has an output of shape (batchSize, 84,  8400) (Num classes + box[x,y,w,h])
+    //         if (dimensions > rows) // Check if the shape[2] is more than shape[1] (yolov8)
+    //         {
+    //             yolov8 = true;
+    //             rows = outputs[0].size[2];
+    //             dimensions = outputs[0].size[1];
+
+    //             outputs[0] = outputs[0].reshape(1, dimensions);
+    //             cv::transpose(outputs[0], outputs[0]);
+    //         }
+    //         data = (float *)outputs[0].data;
+    //     }
+    // }
 
     std::vector<int> class_ids;
     std::vector<float> confidences;
@@ -284,50 +299,50 @@ void Inference::loadClassesFromFile()
     }
 }
 
-void Inference::loadOnnxNetwork()
-{
-    net = cv::dnn::readNetFromONNX(modelPath);
-    if (cudaEnabled)
-    {
-        std::cout << "\nRunning on CUDA" << std::endl;
-        net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-        net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
-    }
-    else
-    {
-        std::cout << "\nRunning on CPU" << std::endl;
-        net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-        net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-    }
-}
+// void Inference::loadOnnxNetwork()
+// {
+//     net = cv::dnn::readNetFromONNX(modelPath);
+//     if (cudaEnabled)
+//     {
+//         std::cout << "\nRunning on CUDA" << std::endl;
+//         net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+//         net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+//     }
+//     else
+//     {
+//         std::cout << "\nRunning on CPU" << std::endl;
+//         net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+//         net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+//     }
+// }
 
-void Inference::loadOnnxNetworkOnnxRuntime()
-{
-    env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Yolo");
-    Ort::SessionOptions sessionOption;
-    sessionOption.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
-    sessionOption.SetIntraOpNumThreads(1);
-    sessionOption.SetLogSeverityLevel(3);
-    session = new Ort::Session(env, modelPath.c_str(), sessionOption);
-    Ort::AllocatorWithDefaultOptions allocator;
-    size_t inputNodesNum = session->GetInputCount();
-    for (size_t i = 0; i < inputNodesNum; i++)
-    {
-        Ort::AllocatedStringPtr input_node_name = session->GetInputNameAllocated(i, allocator);
-        char* temp_buf = new char[50];
-        strcpy(temp_buf, input_node_name.get());
-        inputNodeNames.push_back(temp_buf);
-    }
-    size_t OutputNodesNum = session->GetOutputCount();
-    for (size_t i = 0; i < OutputNodesNum; i++)
-    {
-        Ort::AllocatedStringPtr output_node_name = session->GetOutputNameAllocated(i, allocator);
-        char* temp_buf = new char[10];
-        strcpy(temp_buf, output_node_name.get());
-        outputNodeNames.push_back(temp_buf);
-    }
-    options = Ort::RunOptions{ nullptr };
-}
+// void Inference::loadOnnxNetworkOnnxRuntime()
+// {
+//     env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Yolo");
+//     Ort::SessionOptions sessionOption;
+//     sessionOption.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+//     sessionOption.SetIntraOpNumThreads(1);
+//     sessionOption.SetLogSeverityLevel(3);
+//     session = new Ort::Session(env, modelPath.c_str(), sessionOption);
+//     Ort::AllocatorWithDefaultOptions allocator;
+//     size_t inputNodesNum = session->GetInputCount();
+//     for (size_t i = 0; i < inputNodesNum; i++)
+//     {
+//         Ort::AllocatedStringPtr input_node_name = session->GetInputNameAllocated(i, allocator);
+//         char* temp_buf = new char[50];
+//         strcpy(temp_buf, input_node_name.get());
+//         inputNodeNames.push_back(temp_buf);
+//     }
+//     size_t OutputNodesNum = session->GetOutputCount();
+//     for (size_t i = 0; i < OutputNodesNum; i++)
+//     {
+//         Ort::AllocatedStringPtr output_node_name = session->GetOutputNameAllocated(i, allocator);
+//         char* temp_buf = new char[10];
+//         strcpy(temp_buf, output_node_name.get());
+//         outputNodeNames.push_back(temp_buf);
+//     }
+//     options = Ort::RunOptions{ nullptr };
+// }
 
 cv::Mat Inference::formatToSquare(const cv::Mat &source, int *pad_x, int *pad_y, float *scale)
 {

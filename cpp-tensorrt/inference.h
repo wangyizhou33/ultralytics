@@ -13,9 +13,9 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
-#include "onnxruntime_cxx_api.h"
 #include <NvInfer.h>
 #include <cuda_runtime_api.h>
+
 
 struct Detection
 {
@@ -34,8 +34,8 @@ public:
 
 private:
     void loadClassesFromFile();
-    void loadOnnxNetwork();
-    void loadOnnxNetworkOnnxRuntime();
+    // void loadOnnxNetwork();
+    // void loadOnnxNetworkOnnxRuntime();
     cv::Mat formatToSquare(const cv::Mat &source, int *pad_x, int *pad_y, float *scale);
     void doInference(nvinfer1::IExecutionContext& context, float* inputHost, float* outputHost, int inputH, int inputW, int batchSize, int rows, int dimensions);
     float* runTrt(cv::Mat &modelInput, const std::string &trtModelPath, int rows, int dimensions);
@@ -56,9 +56,9 @@ private:
 
     cv::dnn::Net net;
 
-    Ort::Env env;
-    Ort::Session* session;
-    Ort::RunOptions options;
+    // Ort::Env env;
+    // Ort::Session* session;
+    // Ort::RunOptions options;
     std::vector<const char*> inputNodeNames;
     std::vector<const char*> outputNodeNames;
 };
